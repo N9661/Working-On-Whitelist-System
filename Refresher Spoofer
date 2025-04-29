@@ -1,0 +1,260 @@
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CoreGui = game:GetService("CoreGui")
+local Lighting = game:GetService("Lighting")
+local StarterGui = game:GetService("StarterGui")
+
+local function notify(message, duration)
+    duration = duration or 3
+    
+    for _, gui in pairs(LocalPlayer.PlayerGui:GetChildren()) do
+        if gui.Name == "RefreshNotification" then
+            gui:Destroy()
+        end
+    end
+    
+    local screenGui = Instance.new("ScreenGui")
+    screenGui.Name = "RefreshNotification"
+    screenGui.Parent = LocalPlayer.PlayerGui
+    
+    local frame = Instance.new("Frame")
+    frame.Size = UDim2.new(0, 300, 0, 80)
+    frame.Position = UDim2.new(0.5, -150, 0.2, 0)
+    frame.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    frame.BorderSizePixel = 0
+    frame.Parent = screenGui
+    
+    local notification = Instance.new("TextLabel")
+    notification.Size = UDim2.new(1, 0, 1, 0)
+    notification.BackgroundTransparency = 1
+    notification.TextColor3 = Color3.fromRGB(255, 255, 255)
+    notification.Text = message
+    notification.TextWrapped = true
+    notification.Parent = frame
+    
+    task.delay(duration, function()
+        screenGui:Destroy()
+    end)
+end
+
+local function performCompleteRefresh()
+    notify("Starting complete client refresh...", 2)
+    
+    notify("Clearing global variables...", 1)
+    for key, _ in pairs(_G) do
+        if key ~= "performCompleteRefresh" and key ~= "notify" then
+            _G[key] = nil
+        end
+    end
+    
+    for key, _ in pairs(shared) do
+        shared[key] = nil
+    end
+    
+    notify("Resetting game settings...", 1)
+    pcall(function()
+        UserSettings():GetService("UserGameSettings").MasterVolume = 0.5
+        settings().Rendering.QualityLevel = 7
+    end)
+    
+    notify("Removing custom GUIs...", 1)
+    for _, gui in pairs(LocalPlayer.PlayerGui:GetChildren()) do
+        if not gui:GetAttribute("CoreGui") and gui.Name ~= "RefreshNotification" then
+            pcall(function() gui:Destroy() end)
+        end
+    end
+    
+    pcall(function()
+        for _, gui in pairs(CoreGui:GetChildren()) do
+            if gui.Name ~= "RobloxGui" and gui.Name ~= "PlayerList" then
+                gui:Destroy()
+            end
+        end
+    end)
+    
+    notify("Resetting camera...", 1)
+    pcall(function()
+        local camera = workspace.CurrentCamera
+        camera.CameraType = Enum.CameraType.Custom
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
+            camera.CameraSubject = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        end
+        camera.FieldOfView = 70
+    end)
+    
+    notify("Resetting character properties...", 1)
+    pcall(function()
+        local character = LocalPlayer.Character
+        if character then
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if humanoid then
+                humanoid.WalkSpeed = 16
+                humanoid.JumpPower = 50
+                humanoid.HipHeight = 0
+                humanoid.UseJumpPower = true
+                humanoid.AutoRotate = true
+                
+                for _, track in pairs(humanoid:GetPlayingAnimationTracks()) do
+                    track:Stop()
+                end
+                
+                humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+            end
+            
+            for _, child in pairs(character:GetChildren()) do
+                if child:IsA("Script") or child:IsA("LocalScript") then
+                    if not child:GetAttribute("CoreScript") then
+                        child:Destroy()
+                    end
+                end
+                
+                if child:IsA("BillboardGui") or child:IsA("SurfaceGui") then
+                    child:Destroy()
+                end
+            end
+        end
+    end)
+    
+    notify("Disconnecting custom connections...", 1)
+    if _G.Connections then
+        for i, connection in pairs(_G.Connections) do
+            if typeof(connection) == "RBXScriptConnection" and connection.Connected then
+                connection:Disconnect()
+            end
+            _G.Connections[i] = nil
+        end
+    end
+    
+    notify("Resetting lighting...", 1)
+    pcall(function()
+        Lighting.Brightness = 2
+        Lighting.GlobalShadows = true
+        Lighting.Ambient = Color3.fromRGB(0, 0, 0)
+        Lighting.OutdoorAmbient = Color3.fromRGB(127, 127, 127)
+        Lighting.TimeOfDay = "14:00:00"
+        
+        for _, effect in pairs(Lighting:GetChildren()) do
+            if effect:IsA("BlurEffect") or 
+               effect:IsA("ColorCorrectionEffect") or 
+               effect:IsA("BloomEffect") or 
+               effect:IsA("SunRaysEffect") then
+                effect:Destroy()
+            end
+        end
+    end)
+    
+    notify("Resetting workspace properties...", 1)
+    pcall(function()
+        workspace.Gravity = 196.2
+        workspace.FallenPartsDestroyHeight = -500
+    end)
+    
+    notify("Refreshing player data...", 1)
+    for _, player in pairs(Players:GetPlayers()) do
+        pcall(function()
+            local userId = player.UserId
+            local username = player.Name
+            local displayName = player.DisplayName
+            
+            if player.Character then
+                local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    local currentDisplayName = humanoid.DisplayName
+                    humanoid.DisplayName = ""
+                    task.wait()
+                    humanoid.DisplayName = currentDisplayName
+                end
+                
+                local head = player.Character:FindFirstChild("Head")
+                if head then
+                    for _, gui in pairs(head:GetDescendants()) do
+                        if gui:IsA("TextLabel") then
+                            local originalText = gui.Text
+                            gui.Text = ""
+                            task.wait()
+                            gui.Text = originalText
+                        end
+                    end
+                end
+            end
+        end)
+    end
+    
+    notify("Resetting UI elements...", 1)
+    pcall(function()
+        StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.All, true)
+        
+        if game:GetService("TextChatService").ChatVersion == Enum.ChatVersion.LegacyChatService then
+            local chatModule = require(game:GetService("Chat").ClientChatModules.ChatSettings)
+            chatModule.WindowResizable = true
+            chatModule.WindowDraggable = true
+        end
+    end)
+    
+    notify("Cleaning up instances...", 1)
+    pcall(function()
+        for _, obj in pairs(workspace:GetChildren()) do
+            if obj.ClassName == "Script" or obj.ClassName == "LocalScript" then
+                if not obj:GetAttribute("CoreScript") then
+                    obj:Destroy()
+                end
+            end
+        end
+        
+        if LocalPlayer:FindFirstChild("PlayerScripts") then
+            for _, script in pairs(LocalPlayer.PlayerScripts:GetChildren()) do
+                if script.Name:match("Injected") or script:GetAttribute("Injected") then
+                    script:Destroy()
+                end
+            end
+        end
+    end)
+    
+    notify("Resetting mouse properties...", 1)
+    pcall(function()
+        UserInputService.MouseIconEnabled = true
+        game:GetService("UserInputService").MouseBehavior = Enum.MouseBehavior.Default
+    end)
+    
+    notify("Restoring default functions...", 1)
+    pcall(function()
+
+        if type(getrawmetatable) == "function" then
+            local mt = getrawmetatable(game)
+            if type(setreadonly) == "function" then
+                setreadonly(mt, false)
+            end
+            
+            if type(mt) == "table" then
+                local backups = {
+                    __index = game.__index,
+                    __namecall = game.__namecall,
+                    __newindex = game.__newindex
+                }
+                
+                for method, backup in pairs(backups) do
+                    if mt[method] ~= backup then
+                        mt[method] = backup
+                    end
+                end
+            end
+            
+            if type(setreadonly) == "function" then
+                setreadonly(mt, true)
+            end
+        end
+    end)
+    
+    notify("Client refresh complete! Most client-side modifications should now be reset.", 5)
+    
+    return function()
+        performCompleteRefresh()
+    end
+end
+
+_G.RefreshClient = performCompleteRefresh()
+
+print("Refresh complete. You can run _G.RefreshClient() to refresh again if needed.")

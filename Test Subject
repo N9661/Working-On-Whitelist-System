@@ -1,20 +1,12 @@
 local WHITELISTED_USERNAME = "HVX_Havoc"
 
--- ==================== PRIOR SCRIPT EXECUTION DETECTION ====================
-
--- Store original functions to detect and counter hooking
 local originalFunctions = {}
 
--- Capture original functions before they can be hooked
 local function captureOriginalFunctions()
-    -- Store original kick function
     originalFunctions.kick = game.Players.LocalPlayer.Kick
-    
-    -- Store other security-critical functions
     originalFunctions.getNameFromUserIdAsync = game:GetService("Players").GetNameFromUserIdAsync
     originalFunctions.getPlayers = game:GetService("Players").GetPlayers
     
-    -- Store metamethods if possible
     pcall(function()
         local mt = getrawmetatable(game)
         if mt then
@@ -26,21 +18,17 @@ local function captureOriginalFunctions()
     return originalFunctions
 end
 
--- Detect if functions have been hooked
 local function detectFunctionHooking()
     local hookedFunctions = {}
     
-    -- Check if kick function has been hooked
     if originalFunctions.kick ~= game.Players.LocalPlayer.Kick then
         table.insert(hookedFunctions, "Player.Kick")
     end
     
-    -- Check if other functions have been hooked
     if originalFunctions.getNameFromUserIdAsync ~= game:GetService("Players").GetNameFromUserIdAsync then
         table.insert(hookedFunctions, "GetNameFromUserIdAsync")
     end
     
-    -- Check metamethods
     pcall(function()
         local mt = getrawmetatable(game)
         if mt then
@@ -56,23 +44,25 @@ local function detectFunctionHooking()
     return hookedFunctions
 end
 
--- Restore original functions if they've been hooked
 local function restoreOriginalFunctions()
-    -- Restore kick function
     if originalFunctions.kick and originalFunctions.kick ~= game.Players.LocalPlayer.Kick then
         game.Players.LocalPlayer.Kick = originalFunctions.kick
     end
     
-    -- Restore other functions
-    if originalFunctions.getNameFromUserIdAsync and 
-       originalFunctions.getNameFromUserIdAsync ~= game:GetService("Players").GetNameFromUserIdAsync then
+    if originalFunctions.getNameFromUserIdAsync and
+        originalFunctions.getNameFromUserIdAsync ~= game:GetService("Players").GetNameFromUserIdAsync then
         game:GetService("Players").GetNameFromUserIdAsync = originalFunctions.getNameFromUserIdAsync
     end
     
-    -- Restore metamethods if possible
     pcall(function()
         local mt = getrawmetatable(game)
-        setreadonly(mt, false)
+        if not mt then return end
+        
+        local success = pcall(function()
+            setreadonly(mt, false)
+        end)
+        
+        if not success then return end
         
         if originalFunctions.index and mt.__index ~= originalFunctions.index then
             mt.__index = originalFunctions.index
@@ -82,15 +72,15 @@ local function restoreOriginalFunctions()
             mt.__namecall = originalFunctions.namecall
         end
         
-        setreadonly(mt, true)
+        pcall(function()
+            setreadonly(mt, true)
+        end)
     end)
 end
 
--- Check for global variables that might indicate prior script execution
 local function checkForPriorScriptExecution()
     local evidenceFound = {}
     
-    -- Check for common global variables set by other scripts
     local commonGlobals = {
         "_G.ScriptExecuted",
         "_G.Executed",
@@ -116,7 +106,11 @@ local function checkForPriorScriptExecution()
             end
             
             for i = 2, #parts do
-                current = current[parts[i]]
+                if current and type(current) == "table" then
+                    current = current[parts[i]]
+                else
+                    return nil
+                end
             end
             
             return current
@@ -127,12 +121,10 @@ local function checkForPriorScriptExecution()
         end
     end
     
-    -- Check for registry entries
-    if _G.ScriptRegistry or shared.ScriptRegistry then
+    if _G.ScriptRegistry or (type(shared) == "table" and shared.ScriptRegistry) then
         table.insert(evidenceFound, "Found script registry")
     end
     
-    -- Check for environment modifications
     local hookedFunctions = detectFunctionHooking()
     if #hookedFunctions > 0 then
         for _, funcName in ipairs(hookedFunctions) do
@@ -140,7 +132,6 @@ local function checkForPriorScriptExecution()
         end
     end
     
-    -- Check for suspicious timing
     if _G.ScriptFirstRun then
         local timeSinceLastRun = os.time() - _G.ScriptFirstRun
         if timeSinceLastRun < 30 then
@@ -153,17 +144,23 @@ local function checkForPriorScriptExecution()
     return evidenceFound
 end
 
--- ==================== USERNAME VERIFICATION METHODS ====================
-
--- Method 1: Direct Player Object References
 local function getDirectUsernames()
     local results = {}
     
-    pcall(function() results[1] = {name = game.Players.LocalPlayer.Name, weight = 1} end)
-    pcall(function() results[2] = {name = game:GetService("Players").LocalPlayer.Name, weight = 1} end)
+    pcall(function()
+        if game.Players.LocalPlayer then
+            results[1] = {name = game.Players.LocalPlayer.Name, weight = 1}
+        end
+    end)
     
     pcall(function()
-        if game.Players.LocalPlayer.Character then
+        if game:GetService("Players").LocalPlayer then
+            results[2] = {name = game:GetService("Players").LocalPlayer.Name, weight = 1}
+        end
+    end)
+    
+    pcall(function()
+        if game.Players.LocalPlayer and game.Players.LocalPlayer.Character then
             results[3] = {name = game.Players.LocalPlayer.Character.Parent.Name, weight = 1}
         end
     end)
@@ -178,15 +175,16 @@ local function getDirectUsernames()
     return validResults
 end
 
--- Method 2: UserId-Based Verification (Most Reliable)
 local function getUsernameFromId()
     local results = {}
     
     pcall(function()
         local player = game.Players.LocalPlayer
-        local userId = player.UserId
+        if not player then return end
         
-        -- Use our original function to prevent hooking
+        local userId = player.UserId
+        if not userId then return end
+        
         local getNameFunc = originalFunctions.getNameFromUserIdAsync or game:GetService("Players").GetNameFromUserIdAsync
         
         local success, result = pcall(function()
@@ -194,19 +192,18 @@ local function getUsernameFromId()
         end)
         
         if success and result then
-            results[1] = {name = result, weight = 5} -- Higher weight as this is harder to spoof
+            results[1] = {name = result, weight = 5}
         end
     end)
     
     return results
 end
 
--- Method 3: PlayerGui and CoreGui References
 local function getGuiBasedUsername()
     local results = {}
     
     pcall(function()
-        if game.Players.LocalPlayer:FindFirstChild("PlayerGui") then
+        if game.Players.LocalPlayer and game.Players.LocalPlayer:FindFirstChild("PlayerGui") then
             local name = game.Players.LocalPlayer.PlayerGui.Parent.Name
             results[1] = {name = name, weight = 1}
         end
@@ -228,25 +225,23 @@ local function getGuiBasedUsername()
     return results
 end
 
--- Method 4: Game-Specific References
 local function getGameSpecificReferences()
     local results = {}
     
     pcall(function()
-        if game:GetService("Players").LocalPlayer.leaderstats then
+        if game:GetService("Players").LocalPlayer and game:GetService("Players").LocalPlayer:FindFirstChild("leaderstats") then
             local name = game:GetService("Players").LocalPlayer.leaderstats.Parent.Name
             results[1] = {name = name, weight = 1}
         end
     end)
     
     pcall(function()
-        if game:GetService("Players").LocalPlayer.Team then
-            -- Use original getPlayers function if available
+        if game:GetService("Players").LocalPlayer and game:GetService("Players").LocalPlayer.Team then
             local getPlayersFunc = originalFunctions.getPlayers or game:GetService("Players").GetPlayers
             
             for _, player in pairs(getPlayersFunc(game:GetService("Players"))) do
-                if player.Team == game:GetService("Players").LocalPlayer.Team and 
-                   player.UserId == game:GetService("Players").LocalPlayer.UserId then
+                if player.Team == game:GetService("Players").LocalPlayer.Team and
+                    player.UserId == game:GetService("Players").LocalPlayer.UserId then
                     results[2] = {name = player.Name, weight = 1}
                     break
                 end
@@ -257,12 +252,11 @@ local function getGameSpecificReferences()
     return results
 end
 
--- Method 5: Network Owner Checks
 local function getNetworkBasedUsername()
     local results = {}
     
     pcall(function()
-        if game.Players.LocalPlayer.Character then
+        if game.Players.LocalPlayer and game.Players.LocalPlayer.Character then
             local part = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
             if part then
                 local networkOwner = part:GetNetworkOwner()
@@ -276,31 +270,42 @@ local function getNetworkBasedUsername()
     return results
 end
 
--- Method 6: Friend List Cross-Reference
 local function checkFriendListUsername()
     local results = {}
     
     pcall(function()
         local player = game.Players.LocalPlayer
+        if not player then return end
         
-        local success, friendPages = pcall(function()
-            return game:GetService("Players"):GetFriendsAsync(player.UserId)
+        local userId = player.UserId
+        if not userId then return end
+        
+        local success, friendsList = pcall(function()
+            return game:GetService("Players"):GetFriendsAsync(userId)
         end)
         
-        if success then
-            local currentPage = friendPages
-            while true do
-                for _, item in pairs(currentPage:GetCurrentPage()) do
-                    if item.Id == player.UserId then
-                        results[1] = {name = item.Username, weight = 2}
-                        break
+        if success and friendsList then
+            local page = friendsList:GetCurrentPage()
+            for _, friend in ipairs(page) do
+                if friend.Id == userId then
+                    results[1] = {name = friend.Username, weight = 2}
+                    return
+                end
+            end
+            
+            if not friendsList.IsFinished then
+                local success, nextPage = pcall(function()
+                    return friendsList:GetNextPageAsync()
+                end)
+                
+                if success and nextPage then
+                    for _, friend in ipairs(nextPage) do
+                        if friend.Id == userId then
+                            results[1] = {name = friend.Username, weight = 2}
+                            return
+                        end
                     end
                 end
-                
-                if currentPage.IsFinished then
-                    break
-                end
-                currentPage = friendPages:GetNextPageAsync()
             end
         end
     end)
@@ -308,16 +313,14 @@ local function checkFriendListUsername()
     return results
 end
 
--- Method 7: Check for environment tampering
 local function detectEnvironmentTampering()
     local signs = {}
     
-    -- Check for common spoofing variables
-    if _G.SpoofedUsername or _G.FakeUsername or shared.OriginalUsername then
+    if _G.SpoofedUsername or _G.FakeUsername or
+        (type(shared) == "table" and shared.OriginalUsername) then
         table.insert(signs, true)
     end
     
-    -- Check for metatable tampering
     pcall(function()
         local mt = getrawmetatable(game)
         if mt then
@@ -331,33 +334,29 @@ local function detectEnvironmentTampering()
         end
     end)
     
-    -- Check for function hooking
-    if originalFunctions.getNameFromUserIdAsync and 
-       originalFunctions.getNameFromUserIdAsync ~= game:GetService("Players").GetNameFromUserIdAsync then
+    if originalFunctions.getNameFromUserIdAsync and
+        originalFunctions.getNameFromUserIdAsync ~= game:GetService("Players").GetNameFromUserIdAsync then
         table.insert(signs, true)
     end
     
     return #signs > 0
 end
 
--- Method 8: Check for inconsistencies in player properties
 local function checkPlayerPropertyConsistency()
     local results = {}
     local inconsistencies = {}
     
     pcall(function()
         local player = game.Players.LocalPlayer
+        if not player then return end
         
-        -- Check DisplayName vs Name consistency pattern
         local displayName = player.DisplayName
         local name = player.Name
         
         results[1] = {name = name, weight = 1}
         
-        -- Check if DisplayName is suspiciously similar to a whitelisted name
-        -- when the actual Name is not
-        if displayName:lower() == WHITELISTED_USERNAME:lower() and 
-           name:lower() ~= WHITELISTED_USERNAME:lower() then
+        if displayName:lower() == WHITELISTED_USERNAME:lower() and
+            name:lower() ~= WHITELISTED_USERNAME:lower() then
             table.insert(inconsistencies, true)
         end
     end)
@@ -365,20 +364,15 @@ local function checkPlayerPropertyConsistency()
     return results, #inconsistencies > 0
 end
 
--- ==================== COMPREHENSIVE VERIFICATION SYSTEM ====================
-
 local function verifyRealUsername()
-    -- First check for environment tampering
     local tamperingDetected = detectEnvironmentTampering()
     
-    -- Check for property inconsistencies
     local propertyResults, inconsistencyDetected = checkPlayerPropertyConsistency()
     
-    -- Collect results from all methods
     local allResults = {}
     local methodResults = {
         getDirectUsernames(),
-        getUsernameFromId(), -- This has higher weight
+        getUsernameFromId(),
         getGuiBasedUsername(),
         getGameSpecificReferences(),
         getNetworkBasedUsername(),
@@ -394,10 +388,9 @@ local function verifyRealUsername()
         end
     end
     
-    -- Aggregate results by username
     local aggregatedResults = {}
     for _, result in ipairs(allResults) do
-        local name = result.name:lower() -- Case-insensitive comparison
+        local name = result.name:lower()
         if not aggregatedResults[name] then
             aggregatedResults[name] = {
                 name = result.name,
@@ -408,7 +401,6 @@ local function verifyRealUsername()
         aggregatedResults[name].score = aggregatedResults[name].score + result.weight
     end
     
-    -- Determine most likely real username
     local highestScore = 0
     local mostLikelyName = nil
     
@@ -419,16 +411,13 @@ local function verifyRealUsername()
         end
     end
     
-    -- Check for inconsistencies (sign of spoofing)
     local uniqueNames = 0
     for _ in pairs(aggregatedResults) do
         uniqueNames = uniqueNames + 1
     end
     
-    -- Determine if spoofing is likely
     local spoofingDetected = uniqueNames > 1 or tamperingDetected or inconsistencyDetected
     
-    -- If the claimed name matches whitelist but real name doesn't, that's highly suspicious
     local claimedName = game.Players.LocalPlayer.Name
     local isSpoofingWhitelistedName = claimedName:lower() == WHITELISTED_USERNAME:lower() and
                                      mostLikelyName and mostLikelyName:lower() ~= WHITELISTED_USERNAME:lower()
@@ -443,85 +432,65 @@ local function verifyRealUsername()
     }
 end
 
--- ==================== SECURITY SYSTEM IMPLEMENTATION ====================
-
 local function secureKick(player, reason)
-    -- Use the original kick function to prevent bypassing
     local kickFunction = originalFunctions.kick or player.Kick
     
-    -- Execute the kick
     pcall(function()
         kickFunction(player, reason)
     end)
     
-    -- As a fallback, try alternative methods to force disconnect
     pcall(function()
         game:Shutdown()
     end)
     
-    -- Another fallback method
     pcall(function()
-        while true do
-            -- Infinite loop to crash the client
+        local count = 0
+        while count < 1000 do
+            count = count + 1
         end
     end)
 end
 
 local function checkWhitelist()
-    -- Capture original functions before any potential hooking
     captureOriginalFunctions()
     
-    -- Check for prior script execution
     local priorScriptEvidence = checkForPriorScriptExecution()
     local priorScriptDetected = #priorScriptEvidence > 0
     
-    -- If prior script execution is detected, kick the player
     if priorScriptDetected then
-        -- Restore original functions first to prevent kick bypassing
         restoreOriginalFunctions()
-        
-        -- Kick with a generic error message
         secureKick(game.Players.LocalPlayer, "Connection interrupted (Error Code: " .. math.random(1000, 9999) .. ")")
         return false
     end
     
-    -- Verify real username
     local verification = verifyRealUsername()
     local claimedName = verification.claimedName
     local actualUsername = verification.actualUsername
     
     if not actualUsername then
-        -- Restore original functions and kick
         restoreOriginalFunctions()
         secureKick(game.Players.LocalPlayer, "Authentication failed (Error Code: " .. math.random(1000, 9999) .. ")")
         return false
     end
     
-    -- If we detect they're trying to spoof a whitelisted name, kick them
     if verification.isSpoofingWhitelistedName then
-        -- Restore original functions and kick
         restoreOriginalFunctions()
         secureKick(game.Players.LocalPlayer, "Security violation (Error Code: " .. math.random(1000, 9999) .. ")")
         return false
     end
     
-    -- If spoofing is detected, use the actual username we determined
     if verification.spoofingDetected then
-        -- Check if the ACTUAL username is whitelisted
         if actualUsername:lower() == WHITELISTED_USERNAME:lower() then
             return true
         else
-            -- Restore original functions and kick
             restoreOriginalFunctions()
             secureKick(game.Players.LocalPlayer, "Access denied (Error Code: " .. math.random(1000, 9999) .. ")")
             return false
         end
     else
-        -- No spoofing detected, check the claimed name
         if claimedName:lower() == WHITELISTED_USERNAME:lower() then
             return true
         else
-            -- Restore original functions and kick
             restoreOriginalFunctions()
             secureKick(game.Players.LocalPlayer, "Unauthorized access (Error Code: " .. math.random(1000, 9999) .. ")")
             return false
@@ -529,37 +498,19 @@ local function checkWhitelist()
     end
 end
 
--- ==================== MAIN EXECUTION ====================
-
--- Set a flag to indicate our script has run
--- This helps detect if the script is run multiple times
 if not _G.__SecuritySystemInitialized then
     _G.__SecuritySystemInitialized = true
     
-    -- Run the whitelist check
     local hasAccess = checkWhitelist()
     
     if hasAccess then
-        -- Your main script code here
-        
-        -- Example functionality
         local player = game.Players.LocalPlayer
-        
-print("World")
-        
+        print("World")
     else
-        -- Access denied - the player should have been kicked already
-        -- This is a fallback in case kick fails
-        
-        -- Make the script appear to run but do nothing
         wait(math.random(1, 3))
         error("Script initialization failed: Error code 0x" .. string.format("%x", math.random(1000, 9999)))
     end
 else
-    -- Script has already been initialized - this is a duplicate execution
-    -- This could indicate someone trying to run the script multiple times to bypass security
-    
-    -- Restore original functions and kick
     restoreOriginalFunctions()
     secureKick(game.Players.LocalPlayer, "Multiple execution detected (Error Code: " .. math.random(1000, 9999) .. ")")
 end

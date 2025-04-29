@@ -1,0 +1,537 @@
+-- Advanced Username and UserID Unspoofer
+-- This script attempts to restore original player data using multiple sophisticated methods
+
+local AdvancedUnspoofer = {}
+
+-- Core services
+local Players = game:GetService("Players")
+local HttpService = game:GetService("HttpService")
+local RunService = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
+
+-- Cache for original values
+local OriginalData = {
+    Names = {},
+    DisplayNames = {},
+    UserIds = {},
+    Appearances = {}
+}
+
+-- Detect executor environment
+local ExecutorEnvironment = (function()
+    local env = {
+        Synapse = syn and true or false,
+        SynapseX = syn and syn.protect_gui and true or false,
+        ScriptWare = identifyexecutor and identifyexecutor():find("Script-Ware") and true or false,
+        Krnl = krnl and true or false,
+        Sentinel = sentinel and true or false,
+        ProtoSmasher = pebc_execute and true or false,
+        Sirhurt = sirhurt and true or false,
+        OxygenU = oxygen_get_hwid and true or false
+    }
+    
+    env.Name = (function()
+        if env.SynapseX then return "Synapse X"
+        elseif env.ScriptWare then return "Script-Ware"
+        elseif env.Krnl then return "Krnl"
+        elseif env.Sentinel then return "Sentinel"
+        elseif env.ProtoSmasher then return "ProtoSmasher"
+        elseif env.Sirhurt then return "Sirhurt"
+        elseif env.OxygenU then return "Oxygen U"
+        else return "Unknown"
+        end
+    end)()
+    
+    return env
+end)()
+
+-- Utility functions
+local function deepClone(original)
+    local copy
+    if type(original) == "table" then
+        copy = {}
+        for key, value in pairs(original) do
+            copy[deepClone(key)] = deepClone(value)
+        end
+        setmetatable(copy, deepClone(getmetatable(original)))
+    else
+        copy = original
+    end
+    return copy
+end
+
+local function secureCall(func, ...)
+    local success, result = pcall(func, ...)
+    return success and result or nil
+end
+
+-- Advanced memory scanning (simulated for safety)
+local function scanMemoryForOriginalData(player)
+    -- This would be implemented differently in actual exploits with memory access
+    local data = {}
+    
+    -- Attempt to access internal Roblox instance data
+    if ExecutorEnvironment.Synapse and syn.get_hidden_property then
+        data.Name = syn.get_hidden_property(player, "_originalName")
+        data.UserId = syn.get_hidden_property(player, "_originalUserId")
+    elseif get_hidden_prop then
+        data.Name = get_hidden_prop(player, "_originalName")
+        data.UserId = get_hidden_prop(player, "_originalUserId")
+    end
+    
+    -- Try to access raw memory if available (simulated)
+    if ExecutorEnvironment.SynapseX and syn.read_memory then
+        -- This is a simplified representation - actual memory scanning would be more complex
+        local playerPtr = secureCall(function() return getaddress(player) end)
+        if playerPtr then
+            -- Simulated memory offsets (these would be actual offsets in a real implementation)
+            local nameOffset = 0x10
+            local userIdOffset = 0x18
+            
+            -- Read memory at calculated offsets
+            data.MemoryName = secureCall(function() 
+                return syn.read_memory(playerPtr + nameOffset, 32)
+            end)
+            
+            data.MemoryUserId = secureCall(function() 
+                return syn.read_memory(playerPtr + userIdOffset, 8)
+            end)
+        end
+    end
+    
+    return data
+end
+
+-- Network traffic analysis (simulated)
+local function analyzeNetworkForPlayerData()
+    -- In a real implementation, this would hook network traffic to find original player data
+    -- This is a simplified representation for safety
+    
+    local networkData = {}
+    
+    if ExecutorEnvironment.SynapseX and syn.websocket then
+        -- Set up a hook for future network messages that might contain player data
+        local ws = syn.websocket.connect("wss://presence.roblox.com/")
+        ws.OnMessage:Connect(function(msg)
+            local success, data = pcall(function() return HttpService:JSONDecode(msg) end)
+            if success and data and data.userPresences then
+                for _, presence in ipairs(data.userPresences) do
+                    if presence.userId and presence.username then
+                        networkData[presence.userId] = presence.username
+                    end
+                end
+            end
+        end)
+    end
+    
+    return networkData
+end
+
+-- Web API verification (when possible)
+local function verifyWithRobloxAPI(userId)
+    if not userId or type(userId) ~= "number" or userId <= 0 then return nil end
+    
+    -- Attempt to fetch user info from Roblox API
+    local success, result = pcall(function()
+        -- Some executors allow HTTP requests
+        if request then
+            local response = request({
+                Url = "https://users.roblox.com/v1/users/" .. tostring(userId),
+                Method = "GET"
+            })
+            
+            if response.Success then
+                return HttpService:JSONDecode(response.Body)
+            end
+        elseif syn and syn.request then
+            local response = syn.request({
+                Url = "https://users.roblox.com/v1/users/" .. tostring(userId),
+                Method = "GET"
+            })
+            
+            if response.Success then
+                return HttpService:JSONDecode(response.Body)
+            end
+        elseif http and http.request then
+            local response = http.request({
+                Url = "https://users.roblox.com/v1/users/" .. tostring(userId),
+                Method = "GET"
+            })
+            
+            if response.Success then
+                return HttpService:JSONDecode(response.Body)
+            end
+        end
+        return nil
+    end)
+    
+    if success and result then
+        return {
+            Name = result.name,
+            DisplayName = result.displayName,
+            UserId = result.id
+        }
+    end
+    
+    return nil
+end
+
+-- Metatable manipulation for anti-spoofing
+local function securePlayerMetatable()
+    local success, playerMetatable = pcall(getrawmetatable, Players.LocalPlayer)
+    if not success or not playerMetatable then return end
+    
+    -- Store original metamethods
+    local originalIndex = playerMetatable.__index
+    local originalNewIndex = playerMetatable.__newindex
+    
+    -- Make metatable writable
+    secureCall(function() 
+        if setreadonly then
+            setreadonly(playerMetatable, false)
+        elseif make_writeable then
+            make_writeable(playerMetatable)
+        end
+    end)
+    
+    -- Protect critical properties
+    playerMetatable.__newindex = newcclosure(function(self, key, value)
+        -- Block attempts to change critical properties after we've restored them
+        if OriginalData.Names[self.UserId] and (key == "Name" or key == "DisplayName" or key == "UserId") then
+            -- Allow changes that restore to original values
+            if (key == "Name" and value == OriginalData.Names[self.UserId]) or
+               (key == "DisplayName" and value == OriginalData.DisplayNames[self.UserId]) or
+               (key == "UserId" and value == self.UserId) then
+                return originalNewIndex(self, key, value)
+            end
+            return
+        end
+        
+        return originalNewIndex(self, key, value)
+    end)
+    
+    -- Ensure reading properties returns correct values
+    playerMetatable.__index = newcclosure(function(self, key)
+        local result = originalIndex(self, key)
+        
+        -- If we have original data, use it for critical properties
+        if key == "Name" and OriginalData.Names[self.UserId] then
+            return OriginalData.Names[self.UserId]
+        elseif key == "DisplayName" and OriginalData.DisplayNames[self.UserId] then
+            return OriginalData.DisplayNames[self.UserId]
+        elseif key == "UserId" and OriginalData.UserIds[self.UserId] then
+            return OriginalData.UserIds[self.UserId]
+        end
+        
+        return result
+    end)
+    
+    -- Make metatable read-only again
+    secureCall(function() 
+        if setreadonly then
+            setreadonly(playerMetatable, true)
+        elseif make_readonly then
+            make_readonly(playerMetatable)
+        end
+    end)
+end
+
+-- Hook core functions that might be used for spoofing
+local function hookCoreFunctions()
+    -- Hook GetService to prevent bypassing our protections
+    local originalGetService = game.GetService
+    game.GetService = newcclosure(function(self, serviceName)
+        local service = originalGetService(self, serviceName)
+        
+        -- If Players service is requested, ensure our protections are in place
+        if serviceName == "Players" then
+            task.spawn(function()
+                securePlayerMetatable()
+            end)
+        end
+        
+        return service
+    end)
+    
+    -- Hook FindFirstChild to prevent bypassing via direct instance access
+    local originalFindFirstChild = game.FindFirstChild
+    game.FindFirstChild = newcclosure(function(self, childName, ...)
+        local result = originalFindFirstChild(self, childName, ...)
+        
+        if childName == "Players" and result then
+            task.spawn(function()
+                securePlayerMetatable()
+            end)
+        end
+        
+        return result
+    end)
+    
+    -- Additional hooks for other potential bypass methods
+    if hookfunction then
+        -- Hook functions that might be used to modify player instances
+        local namecall_methods = {
+            "FindFirstChild", 
+            "FindFirstChildOfClass", 
+            "FindFirstChildWhichIsA",
+            "GetChildren",
+            "GetDescendants"
+        }
+        
+        for _, method in ipairs(namecall_methods) do
+            local original = game[method]
+            hookfunction(original, newcclosure(function(self, ...)
+                local result = original(self, ...)
+                
+                -- If this might return Players service, ensure our protections
+                if (self == game and (... == "Players" or ... == "Player")) or
+                   (method:find("Child") and result and result:IsA("Players")) or
+                   (method:find("Children") and typeof(result) == "table") then
+                    task.spawn(function()
+                        securePlayerMetatable()
+                    end)
+                end
+                
+                return result
+            end))
+        end
+    end
+end
+
+-- Restore player appearance to match original identity
+local function restorePlayerAppearance(player, userId)
+    if not player or not userId then return end
+    
+    -- Try to load the original appearance
+    secureCall(function()
+        local Appearance = Players:GetHumanoidDescriptionFromUserId(userId)
+        if Appearance then
+            OriginalData.Appearances[player.UserId] = Appearance
+            
+            -- Apply the appearance if the player has a character
+            if player.Character and player.Character:FindFirstChild("Humanoid") then
+                player.Character.Humanoid:ApplyDescription(Appearance)
+            end
+            
+            -- Set up character added hook to apply appearance to new characters
+            player.CharacterAdded:Connect(function(character)
+                local humanoid = character:WaitForChild("Humanoid", 5)
+                if humanoid and OriginalData.Appearances[player.UserId] then
+                    humanoid:ApplyDescription(OriginalData.Appearances[player.UserId])
+                end
+            end)
+        end
+    end)
+end
+
+-- Detect and fix spoofed instances
+local function detectSpoofedInstances()
+    -- Check for duplicate/fake player instances
+    local realPlayers = {}
+    local suspiciousPlayers = {}
+    
+    for _, player in ipairs(Players:GetPlayers()) do
+        -- Check if this UserId already exists in our list
+        if realPlayers[player.UserId] then
+            table.insert(suspiciousPlayers, player)
+        else
+            realPlayers[player.UserId] = player
+        end
+        
+        -- Check for invalid UserIds (negative, extremely large, etc.)
+        if player.UserId <= 0 or player.UserId > 2^31 then
+            table.insert(suspiciousPlayers, player)
+        end
+    end
+    
+    -- Handle suspicious players
+    for _, player in ipairs(suspiciousPlayers) do
+        -- Attempt to get real data for this player
+        local apiData = verifyWithRobloxAPI(player.UserId)
+        if apiData then
+            -- Update with verified data
+            secureCall(function() player.Name = apiData.Name end)
+            secureCall(function() player.DisplayName = apiData.DisplayName end)
+        else
+            -- If we can't verify, try to isolate the suspicious player
+            secureCall(function()
+                -- This is a simplified approach - in reality, you'd need more sophisticated methods
+                -- to handle fake players without breaking the game
+                if player ~= Players.LocalPlayer then
+                    player.Parent = nil -- Remove from Players service
+                end
+            end)
+        end
+    end
+end
+
+-- Main unspoof function
+function AdvancedUnspoofer.unspoof()
+    -- Wait for game to load
+    if not game:IsLoaded() then
+        game.Loaded:Wait()
+    end
+    
+    -- Wait for local player
+    if not Players.LocalPlayer then
+        Players:GetPropertyChangedSignal("LocalPlayer"):Wait()
+    end
+    
+    -- Initialize network analysis
+    local networkData = analyzeNetworkForPlayerData()
+    
+    -- Process all current players
+    for _, player in ipairs(Players:GetPlayers()) do
+        -- Store original values if we can trust them (early in the game load)
+        if not OriginalData.Names[player.UserId] then
+            OriginalData.Names[player.UserId] = player.Name
+            OriginalData.DisplayNames[player.UserId] = player.DisplayName
+            OriginalData.UserIds[player.UserId] = player.UserId
+        end
+        
+        -- Scan memory for original data
+        local memoryData = scanMemoryForOriginalData(player)
+        if memoryData.Name then
+            OriginalData.Names[player.UserId] = memoryData.Name
+        end
+        if memoryData.UserId then
+            OriginalData.UserIds[player.UserId] = memoryData.UserId
+        end
+        
+        -- Verify with Roblox API
+        local apiData = verifyWithRobloxAPI(player.UserId)
+        if apiData then
+            OriginalData.Names[player.UserId] = apiData.Name
+            OriginalData.DisplayNames[player.UserId] = apiData.DisplayName
+            -- Don't update UserId from API as we used that to query
+        end
+        
+        -- Apply the original values
+        secureCall(function() player.Name = OriginalData.Names[player.UserId] end)
+        secureCall(function() player.DisplayName = OriginalData.DisplayNames[player.UserId] end)
+        
+        -- Restore appearance
+        restorePlayerAppearance(player, player.UserId)
+    end
+    
+    -- Set up hooks for new players
+    Players.PlayerAdded:Connect(function(player)
+        -- Store original values immediately
+        OriginalData.Names[player.UserId] = player.Name
+        OriginalData.DisplayNames[player.UserId] = player.DisplayName
+        OriginalData.UserIds[player.UserId] = player.UserId
+        
+        -- Verify with API
+        task.spawn(function()
+            local apiData = verifyWithRobloxAPI(player.UserId)
+            if apiData then
+                OriginalData.Names[player.UserId] = apiData.Name
+                OriginalData.DisplayNames[player.UserId] = apiData.DisplayName
+                
+                -- Apply verified data
+                secureCall(function() player.Name = apiData.Name end)
+                secureCall(function() player.DisplayName = apiData.DisplayName end)
+                
+                -- Restore appearance
+                restorePlayerAppearance(player, player.UserId)
+            end
+        end)
+        
+        -- Scan memory for this player
+        task.spawn(function()
+            local memoryData = scanMemoryForOriginalData(player)
+            if memoryData.Name then
+                OriginalData.Names[player.UserId] = memoryData.Name
+                secureCall(function() player.Name = memoryData.Name end)
+            end
+            if memoryData.UserId then
+                OriginalData.UserIds[player.UserId] = memoryData.UserId
+            end
+        end)
+    end)
+    
+    -- Set up continuous monitoring
+    local heartbeatConnection
+    heartbeatConnection = RunService.Heartbeat:Connect(function()
+        -- Check for any new spoofing attempts every few seconds
+        if tick() % 3 < 0.1 then
+            for _, player in ipairs(Players:GetPlayers()) do
+                -- Check if current values match our stored originals
+                if OriginalData.Names[player.UserId] and player.Name ~= OriginalData.Names[player.UserId] then
+                    secureCall(function() player.Name = OriginalData.Names[player.UserId] end)
+                end
+                
+                if OriginalData.DisplayNames[player.UserId] and player.DisplayName ~= OriginalData.DisplayNames[player.UserId] then
+                    secureCall(function() player.DisplayName = OriginalData.DisplayNames[player.UserId] end)
+                end
+            end
+            
+            -- Periodically check for spoofed instances
+            detectSpoofedInstances()
+        end
+    end)
+    
+    -- Apply deep protection methods
+    securePlayerMetatable()
+    hookCoreFunctions()
+    
+    -- Attempt to restore game environment integrity
+    secureCall(function()
+        -- Restore environment functions that might have been tampered with
+        if ExecutorEnvironment.SynapseX then
+            -- Synapse-specific environment restoration
+            if syn.restore_function then
+                syn.restore_function(getrawmetatable)
+                syn.restore_function(setreadonly)
+                syn.restore_function(newcclosure)
+            end
+        elseif ExecutorEnvironment.ScriptWare then
+            -- Script-Ware specific restorations
+            if restorefunction then
+                restorefunction(getrawmetatable)
+                restorefunction(setreadonly)
+                restorefunction(newcclosure)
+            end
+        end
+    end)
+    
+    -- Create a cleanup function
+    function AdvancedUnspoofer.cleanup()
+        if heartbeatConnection then
+            heartbeatConnection:Disconnect()
+        end
+    end
+    
+    -- Advanced anti-tampering
+    local env = getfenv(0)
+    local protectedFunctions = {"unspoof", "cleanup"}
+    
+    for _, funcName in ipairs(protectedFunctions) do
+        local originalFunc = AdvancedUnspoofer[funcName]
+        
+        -- Create a protected closure that can't be modified
+        AdvancedUnspoofer[funcName] = newcclosure(function(...)
+            return originalFunc(...)
+        end)
+    end
+    
+    -- Prevent the unspoofer from being modified or removed
+    setmetatable(AdvancedUnspoofer, {
+        __newindex = function(t, k, v)
+            if protectedFunctions[k] then
+                return -- Block modification of protected functions
+            end
+            rawset(t, k, v)
+        end,
+        
+        __metatable = "Locked" -- Prevent getmetatable
+    })
+    
+    -- Return success message
+    return "Advanced Username and UserID Unspoofer activated successfully"
+end
+
+-- Provide a simple interface
+return function()
+    return AdvancedUnspoofer.unspoof()
+end

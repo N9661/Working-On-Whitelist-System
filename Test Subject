@@ -1,4 +1,4 @@
-local WHITELISTED_USERNAME = "HVX_Havoc"
+local WHITELISTED_USERNAME = "Tester"
 
 local originalFunctions = {}
 

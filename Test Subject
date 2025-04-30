@@ -1,7 +1,87 @@
-local WHITELISTED_USERNAME = "Tester"
+local function fetchWhitelist()
+    local success, whitelistData = pcall(function()
+        return loadstring(game:HttpGet("https://raw.githubusercontent.com/N9661/Working-On-Whitelist-System/refs/heads/main/Whitelist"))()
+    end)
+    
+    if not success or not whitelistData then
+        return nil
+    end
+    
+    -- Fix any syntax errors in the whitelist data
+    local cleanedData = {}
+    for i, entry in pairs(whitelistData) do
+        if type(entry) == "table" and entry.username and entry.clientId then
+            table.insert(cleanedData, entry)
+        end
+    end
+    
+    return cleanedData
+end
 
+-- Check if the player is in the whitelist
+local function isPlayerWhitelisted(whitelist)
+    if not whitelist then return false end
+    
+    local player = game.Players.LocalPlayer
+    if not player then return false end
+    
+    local clientIdBase = game:GetService("RbxAnalyticsService"):GetClientId()
+    
+    -- Extract the first 3 segments of the client ID (ignoring the last 2 segments)
+    local clientIdParts = string.split(clientIdBase, "-")
+    local truncatedClientId = ""
+    if #clientIdParts >= 3 then
+        truncatedClientId = clientIdParts[1] .. "-" .. clientIdParts[2] .. "-" .. clientIdParts[3]
+    end
+    
+    -- Check for exact match with whitelist entries (potential spoofing)
+    for _, entry in ipairs(whitelist) do
+        if entry.clientId == clientIdBase then
+            return false, "Security violation: Using exact whitelist credentials"
+        end
+    end
+    
+    -- Check if player is whitelisted
+    for _, entry in ipairs(whitelist) do
+        -- Extract the first 3 segments of the whitelist entry's client ID
+        local entryParts = string.split(entry.clientId or "", "-")
+        local entryTruncatedId = ""
+        if #entryParts >= 3 then
+            entryTruncatedId = entryParts[1] .. "-" .. entryParts[2] .. "-" .. entryParts[3]
+        end
+        
+        -- Check if username matches and the truncated client ID matches
+        if string.lower(entry.username) == string.lower(player.Name) and 
+           entryTruncatedId == truncatedClientId then
+            return true, entry.username
+        end
+    end
+    
+    return false, "Not whitelisted"
+end
+
+-- Main execution
+local whitelist = fetchWhitelist()
+if not whitelist then
+    game.Players.LocalPlayer:Kick("Failed to load whitelist system. Please try again later.")
+    wait(1)
+    error("Whitelist system failed to load")
+    return
+end
+
+local isWhitelisted, whitelistedUsername = isPlayerWhitelisted(whitelist)
+if not isWhitelisted then
+    game.Players.LocalPlayer:Kick(whitelistedUsername)
+    wait(1)
+    error("Not whitelisted")
+    return
+end
+
+-- Set the whitelisted username for the security system to use
+_G.WHITELISTED_USERNAME = whitelistedUsername
+
+-- Now load and run your security script
 local originalFunctions = {}
-
 local function captureOriginalFunctions()
     originalFunctions.kick = game.Players.LocalPlayer.Kick
     originalFunctions.getNameFromUserIdAsync = game:GetService("Players").GetNameFromUserIdAsync
@@ -355,8 +435,8 @@ local function checkPlayerPropertyConsistency()
         
         results[1] = {name = name, weight = 1}
         
-        if displayName:lower() == WHITELISTED_USERNAME:lower() and
-            name:lower() ~= WHITELISTED_USERNAME:lower() then
+        if displayName:lower() == _G.WHITELISTED_USERNAME:lower() and
+            name:lower() ~= _G.WHITELISTED_USERNAME:lower() then
             table.insert(inconsistencies, true)
         end
     end)
@@ -419,8 +499,8 @@ local function verifyRealUsername()
     local spoofingDetected = uniqueNames > 1 or tamperingDetected or inconsistencyDetected
     
     local claimedName = game.Players.LocalPlayer.Name
-    local isSpoofingWhitelistedName = claimedName:lower() == WHITELISTED_USERNAME:lower() and
-                                     mostLikelyName and mostLikelyName:lower() ~= WHITELISTED_USERNAME:lower()
+    local isSpoofingWhitelistedName = claimedName:lower() == _G.WHITELISTED_USERNAME:lower() and
+                                     mostLikelyName and mostLikelyName:lower() ~= _G.WHITELISTED_USERNAME:lower()
     
     return {
         claimedName = claimedName,
@@ -480,7 +560,7 @@ local function checkWhitelist()
     end
     
     if verification.spoofingDetected then
-        if actualUsername:lower() == WHITELISTED_USERNAME:lower() then
+        if actualUsername:lower() == _G.WHITELISTED_USERNAME:lower() then
             return true
         else
             restoreOriginalFunctions()
@@ -488,7 +568,7 @@ local function checkWhitelist()
             return false
         end
     else
-        if claimedName:lower() == WHITELISTED_USERNAME:lower() then
+        if claimedName:lower() == _G.WHITELISTED_USERNAME:lower() then
             return true
         else
             restoreOriginalFunctions()
@@ -506,6 +586,9 @@ if not _G.__SecuritySystemInitialized then
     if hasAccess then
         local player = game.Players.LocalPlayer
         print("World")
+        
+        -- Your main script code goes here after whitelist verification
+        
     else
         wait(math.random(1, 3))
         error("Script initialization failed: Error code 0x" .. string.format("%x", math.random(1000, 9999)))

@@ -1,0 +1,45 @@
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+
+-- Your Replit URL (will look something like https://robloxdatareceiver.yourusername.repl.co)
+local SERVER_URL = "https://e808dc84-22fd-4e95-82a4-858f661a7ae8-00-15k732fequfme.picard.replit.dev/"
+
+-- Function to send player data to your server when a player joins
+local function onPlayerJoin(player)
+    -- Information you can legitimately access
+    local userData = {
+        Username = player.Name,
+        UserId = player.UserId,
+        AccountAge = player.AccountAge,
+        MembershipType = tostring(player.MembershipType),
+        JoinTime = os.time(),
+        GameId = game.GameId,
+        PlaceId = game.PlaceId
+    }
+    
+    -- Convert to JSON
+    local jsonData = HttpService:JSONEncode(userData)
+    
+    -- Send data to your Replit server
+    pcall(function()
+        local response = HttpService:PostAsync(SERVER_URL, jsonData, Enum.HttpContentType.ApplicationJson)
+        print("Data sent for " .. player.Name .. ": " .. response)
+    end)
+end
+
+-- Connect to PlayerAdded event
+Players.PlayerAdded:Connect(onPlayerJoin)
+
+-- Optional: Also track when players leave
+Players.PlayerRemoving:Connect(function(player)
+    local userData = {
+        Username = player.Name,
+        UserId = player.UserId,
+        EventType = "PlayerLeft",
+        LeaveTime = os.time()
+    }
+    
+    pcall(function()
+        HttpService:PostAsync(SERVER_URL, HttpService:JSONEncode(userData), Enum.HttpContentType.ApplicationJson)
+    end)
+end)

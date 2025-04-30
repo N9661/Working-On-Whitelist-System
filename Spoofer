@@ -1,0 +1,142 @@
+-- Username spoofing script
+-- This is for educational purposes only
+
+local spoofedName = "Tester"
+
+-- Store the original functions
+local originalFunctions = {}
+
+-- Capture original functions before hooking
+local function captureOriginals()
+    -- Store original player methods
+    if game.Players.LocalPlayer then
+        originalFunctions.getName = game.Players.LocalPlayer.GetPropertyChangedSignal
+        originalFunctions.nameIndex = game.Players.LocalPlayer.Name
+    end
+    
+    -- Store original GetService method
+    originalFunctions.getService = game.GetService
+    
+    -- Store original GetNameFromUserIdAsync
+    if game:GetService("Players") then
+        originalFunctions.getNameFromUserIdAsync = game:GetService("Players").GetNameFromUserIdAsync
+    end
+    
+    -- Try to capture metatable functions
+    pcall(function()
+        local mt = getrawmetatable(game)
+        if mt then
+            originalFunctions.index = mt.__index
+            originalFunctions.namecall = mt.__namecall
+        end
+    end)
+end
+
+-- Apply the username spoofing
+local function applySpoof()
+    -- Hook metatable to intercept property access
+    pcall(function()
+        local mt = getrawmetatable(game)
+        setreadonly(mt, false)
+        
+        local originalIndex = mt.__index
+        mt.__index = newcclosure(function(self, key)
+            -- When accessing player name, return spoofed name
+            if key == "Name" and self == game.Players.LocalPlayer then
+                return spoofedName
+            end
+            
+            -- When accessing DisplayName, also return spoofed name
+            if key == "DisplayName" and self == game.Players.LocalPlayer then
+                return spoofedName
+            end
+            
+            -- Otherwise use original __index
+            return originalIndex(self, key)
+        end)
+        
+        -- Hook namecall to intercept methods
+        local originalNamecall = mt.__namecall
+        mt.__namecall = newcclosure(function(self, ...)
+            local method = getnamecallmethod()
+            local args = {...}
+            
+            -- Intercept GetNameFromUserIdAsync
+            if method == "GetNameFromUserIdAsync" and self == game:GetService("Players") then
+                local userId = args[1]
+                if userId == game.Players.LocalPlayer.UserId then
+                    return spoofedName
+                end
+            end
+            
+            -- Intercept GetPlayerByUserId
+            if method == "GetPlayerByUserId" and self == game:GetService("Players") then
+                local result = originalNamecall(self, ...)
+                if result == game.Players.LocalPlayer then
+                    -- Create a proxy object that returns spoofed name
+                    local proxy = {}
+                    setmetatable(proxy, {
+                        __index = function(_, key)
+                            if key == "Name" or key == "DisplayName" then
+                                return spoofedName
+                            else
+                                return result[key]
+                            end
+                        end
+                    })
+                    return proxy
+                end
+                return result
+            end
+            
+            return originalNamecall(self, ...)
+        end)
+        
+        setreadonly(mt, true)
+    end)
+    
+    -- Create fake properties for direct access
+    pcall(function()
+        local player = game.Players.LocalPlayer
+        
+        -- Create a proxy for the player object
+        local playerProxy = {}
+        for _, prop in pairs({"Name", "DisplayName"}) do
+            playerProxy[prop] = spoofedName
+        end
+        
+        -- Attempt to override the properties
+        for prop, value in pairs(playerProxy) do
+            pcall(function()
+                local s = Instance.new("StringValue")
+                s.Value = value
+                s.Name = prop
+                s.Parent = player
+            end)
+        end
+    end)
+    
+    -- Notify that spoofing is active
+    local success = pcall(function()
+        local notification = Instance.new("Message")
+        notification.Text = "Username spoofed to: " .. spoofedName
+        notification.Parent = game.Workspace
+        wait(3)
+        notification:Destroy()
+    end)
+    
+    if not success then
+        print("Username spoofed to: " .. spoofedName)
+    end
+end
+
+-- Execute the spoofing
+captureOriginals()
+applySpoof()
+
+-- Create a loop to maintain the spoof
+spawn(function()
+    while wait(1) do
+        pcall(applySpoof)
+    end
+end)

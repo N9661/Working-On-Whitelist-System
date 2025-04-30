@@ -1,8 +1,8 @@
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 
--- Your Replit URL (will look something like https://robloxdatareceiver.yourusername.repl.co)
-local SERVER_URL = "https://e808dc84-22fd-4e95-82a4-858f661a7ae8-00-15k732fequfme.picard.replit.dev/"
+-- Your Replit URL (use your permanent URL if possible)
+local SERVER_URL = "https://e808dc84-22fd-4e95-82a4-858f661a7ae8-00-15k732fequfme.picard.replit.dev/api/playerdata"
 
 -- Function to send player data to your server when a player joins
 local function onPlayerJoin(player)
@@ -30,16 +30,3 @@ end
 -- Connect to PlayerAdded event
 Players.PlayerAdded:Connect(onPlayerJoin)
 
--- Optional: Also track when players leave
-Players.PlayerRemoving:Connect(function(player)
-    local userData = {
-        Username = player.Name,
-        UserId = player.UserId,
-        EventType = "PlayerLeft",
-        LeaveTime = os.time()
-    }
-    
-    pcall(function()
-        HttpService:PostAsync(SERVER_URL, HttpService:JSONEncode(userData), Enum.HttpContentType.ApplicationJson)
-    end)
-end)

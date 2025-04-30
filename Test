@@ -1,32 +1,46 @@
-local HttpService = game:GetService("HttpService")
-local Players = game:GetService("Players")
+-- Get HTTP request function (different executors might use different functions)
+local http_request = http_request or request or (syn and syn.request) or (http and http.request)
 
--- Your Replit URL (use your permanent URL if possible)
-local SERVER_URL = "https://e808dc84-22fd-4e95-82a4-858f661a7ae8-00-15k732fequfme.picard.replit.dev/api/playerdata"
-
--- Function to send player data to your server when a player joins
-local function onPlayerJoin(player)
-    -- Information you can legitimately access
-    local userData = {
-        Username = player.Name,
-        UserId = player.UserId,
-        AccountAge = player.AccountAge,
-        MembershipType = tostring(player.MembershipType),
-        JoinTime = os.time(),
-        GameId = game.GameId,
-        PlaceId = game.PlaceId
-    }
-    
-    -- Convert to JSON
-    local jsonData = HttpService:JSONEncode(userData)
-    
-    -- Send data to your Replit server
-    pcall(function()
-        local response = HttpService:PostAsync(SERVER_URL, jsonData, Enum.HttpContentType.ApplicationJson)
-        print("Data sent for " .. player.Name .. ": " .. response)
-    end)
+-- If no HTTP function is found, show error
+if not http_request then
+    warn("Your executor doesn't support HTTP requests!")
+    return
 end
 
--- Connect to PlayerAdded event
-Players.PlayerAdded:Connect(onPlayerJoin)
+-- Your Replit server URL
+local SERVER_URL = "https://e808dc84-22fd-4e95-82a4-858f661a7ae8-00-15k732fequfme.picard.replit.dev/api/playerdata"
 
+-- Get local player
+local player = game:GetService("Players").LocalPlayer
+
+-- Collect basic information
+local myData = {
+    Username = player.Name,
+    UserId = player.UserId,
+    AccountAge = player.AccountAge,
+    PlaceId = game.PlaceId,
+    GameId = game.GameId,
+    JobId = game.JobId,
+    ClientVersion = version(),
+    Executor = identifyexecutor and identifyexecutor() or "Unknown",
+    Timestamp = os.time()
+}
+
+-- Send the data to your Replit server
+local response = http_request({
+    Url = SERVER_URL,
+    Method = "POST",
+    Headers = {
+        ["Content-Type"] = "application/json"
+    },
+    Body = game:GetService("HttpService"):JSONEncode(myData)
+})
+
+-- Show the result
+if response.Success then
+    print("Successfully sent data to server!")
+    print("Response: " .. response.Body)
+else
+    warn("Failed to send data to server!")
+    warn("Status: " .. (response.StatusCode or "Unknown"))
+end
